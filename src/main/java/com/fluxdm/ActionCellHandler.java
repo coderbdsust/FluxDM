@@ -12,10 +12,10 @@ public class ActionCellHandler extends AbstractCellEditor implements TableCellRe
     private DownloadTask currentTask;
 
     private final JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 3, 0));
-    private final JButton pauseBtn  = iconBtn("⏸", new Color(0x92, 0x40, 0x0e));
-    private final JButton resumeBtn = iconBtn("▶", new Color(0x1d, 0x4e, 0xd8));
-    private final JButton openBtn   = iconBtn("📂", new Color(0x06, 0x5f, 0x46));
-    private final JButton removeBtn = iconBtn("✕", new Color(0x7f, 0x1d, 0x1d));
+    private final JButton pauseBtn  = iconBtn("\u23F8", new Color(0x92, 0x40, 0x0e));
+    private final JButton resumeBtn = iconBtn("\u25B6", new Color(0x1d, 0x4e, 0xd8));
+    private final JButton openBtn   = iconBtn("\uD83D\uDCC2", new Color(0x06, 0x5f, 0x46));
+    private final JButton removeBtn = iconBtn("\u2715", new Color(0x7f, 0x1d, 0x1d));
 
     public ActionCellHandler(DownloadTableModel model) {
         this.model = model;
@@ -35,10 +35,8 @@ public class ActionCellHandler extends AbstractCellEditor implements TableCellRe
                     String os = System.getProperty("os.name").toLowerCase();
                     if (os.contains("mac")) {
                         if (filePath != null && new java.io.File(filePath).exists()) {
-                            // Reveal and select the file in Finder
                             Runtime.getRuntime().exec(new String[]{"open", "-R", filePath});
                         } else {
-                            // Fallback: open the downloads folder
                             Runtime.getRuntime().exec(new String[]{"open", dirPath});
                         }
                     } else if (os.contains("win")) {
@@ -57,7 +55,7 @@ public class ActionCellHandler extends AbstractCellEditor implements TableCellRe
 
     private void configure(DownloadTask task, boolean selected) {
         currentTask = task;
-        panel.setBackground(selected ? DarkTheme.BG_MEDIUM : DarkTheme.BG_DARKEST);
+        panel.setBackground(selected ? ThemeManager.bgMedium() : ThemeManager.bgDarkest());
         panel.removeAll();
 
         DownloadTask.Status s = task.getStatus();

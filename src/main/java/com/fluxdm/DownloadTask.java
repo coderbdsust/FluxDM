@@ -173,6 +173,8 @@ public class DownloadTask {
         // %(title)s.%(ext)s — yt-dlp will set the real extension
         String outTpl = new File(dir, "%(title)s.%(ext)s").getAbsolutePath();
 
+        boolean isAudioOnly = quality.contains("Audio");
+
         try {
             // ── Step 1: get predicted filename quickly ─────────────────────
             Process nameProc = new ProcessBuilder(ytdlp,
@@ -184,8 +186,9 @@ public class DownloadTask {
                 .findFirst().orElse("").trim();
             nameProc.waitFor(20, TimeUnit.SECONDS);
             if (!predictedPath.isEmpty()) {
-                // After remux/merge the ext will be .mp4
-                String displayPath = predictedPath.replaceAll("\\.[^.]+$", ".mp4");
+                // After remux/merge the ext will be .mp4, or .mp3 for audio
+                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mp4";
+                String displayPath = predictedPath.replaceAll("\\.[^.]+$", ext);
                 savedFilePath = displayPath;
                 fileName = new File(displayPath).getName();
                 notifyUpdate();
@@ -214,14 +217,21 @@ public class DownloadTask {
             cmd.add("--no-mtime");
             cmd.add("--no-part");
 
-            if (hasFfmpeg) {
+            if (hasFfmpeg && isAudioOnly) {
+                // Audio Only (MP3) with ffmpeg: extract audio and convert to MP3
+                cmd.add("-f"); cmd.add("bestaudio[acodec^=mp4a]/bestaudio");
+                cmd.add("--extract-audio");
+                cmd.add("--audio-format"); cmd.add("mp3");
+                cmd.add("--audio-quality"); cmd.add("0");
+                String ffmpegDir = new File(ffmpeg).getParent();
+                if (ffmpegDir != null && !ffmpegDir.isEmpty()) {
+                    cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
+                }
+            } else if (hasFfmpeg) {
                 // Download best video + best audio, merge into mp4
-                // Prefer h264+m4a for widest compatibility
                 cmd.add("-f");
                 cmd.add(buildFmtFfmpeg(quality));
                 cmd.add("--merge-output-format"); cmd.add("mp4");
-                // ffmpeg location hint (helps when ffmpeg isn't on PATH)
-                // Pass exact directory containing ffmpeg so yt-dlp can find it even if not on PATH
                 String ffmpegDir = new File(ffmpeg).getParent();
                 if (ffmpegDir != null && !ffmpegDir.isEmpty()) {
                     cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
@@ -256,6 +266,11 @@ public class DownloadTask {
                         String dest = line.substring(line.indexOf("Destination:") + 12).trim();
                         if (!dest.isEmpty()) { trackedDest = dest; savedFilePath = dest; fileName = new File(dest).getName(); notifyUpdate(); }
                     }
+                    // "[ExtractAudio] Destination: /path/file.mp3"
+                    if (line.contains("[ExtractAudio] Destination:")) {
+                        String dest = line.substring(line.indexOf("Destination:") + 12).trim();
+                        if (!dest.isEmpty()) { trackedDest = dest; savedFilePath = dest; fileName = new File(dest).getName(); notifyUpdate(); }
+                    }
                     // "[Merger] Merging formats into \"file.mp4\""
                     if (line.contains("Merging formats into") || line.contains("Merger")) {
                         Matcher mm = Pattern.compile("\"([^\"]+\\.mp4)\"").matcher(line);
@@ -272,8 +287,8 @@ public class DownloadTask {
             if (exit == 0) {
                 // yt-dlp sometimes leaves separate streams (.f137.mp4 + .f140.m4a)
                 // even with --merge-output-format if ffmpeg wasn't invoked properly.
-                // Detect this and merge manually.
-                if (hasFfmpeg) {
+                // Detect this and merge manually. Skip for audio-only (already converted).
+                if (hasFfmpeg && !isAudioOnly) {
                     mergeIfNeeded(dir, ffmpeg);
                 }
 
@@ -308,11 +323,9 @@ public class DownloadTask {
             case "720p"             -> "bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]";
             case "480p"             -> "bestvideo[height<=480][vcodec^=avc1]+bestaudio[acodec^=mp4a]";
             case "360p"             -> "bestvideo[height<=360][vcodec^=avc1]+bestaudio[acodec^=mp4a]";
-            case "Audio Only (MP3)" -> "bestaudio[acodec^=mp4a]/bestaudio";
             default                 -> "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]";
         };
         // Fallback chain: preferred codec → any codec → single best stream
-        if (q.contains("Audio")) return base;
         String hCap = q.contains("2160") ? "2160" : q.contains("1080") ? "1080"
                     : q.contains("720")  ? "720"  : q.contains("480")  ? "480"
                     : q.contains("360")  ? "360"  : null;

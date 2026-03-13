@@ -40,14 +40,20 @@
         <maven.clean.plugin.version>3.4.0</maven.clean.plugin.version>
         <maven.assembly.plugin.version>3.7.1</maven.assembly.plugin.version>
         <exec.maven.plugin.version>3.3.0</exec.maven.plugin.version>
+
+        <!-- Runtime dependency versions -->
+        <flatlaf.version>3.5.4</flatlaf.version>
     </properties>
 
     <!-- ─── Dependencies ─────────────────────────────────────────────────── -->
-    <!--
-        FluxDM has ZERO runtime dependencies — only Java SE (Swing, java.net,
-        java.io, java.util.prefs). Keeps the JAR tiny and runnable on any JDK 11+.
-    -->
     <dependencies>
+        <!-- FlatLaf — modern Swing look & feel -->
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+            <version>${flatlaf.version}</version>
+        </dependency>
+
         <!-- JUnit 5 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

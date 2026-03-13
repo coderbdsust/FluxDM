@@ -10,7 +10,7 @@ import java.util.prefs.Preferences;
 public class FluxDMFrame extends JFrame {
 
     private final DownloadTableModel tableModel = new DownloadTableModel();
-    private final JTable table;
+    private JTable table;
     private final JLabel statusLabel = new JLabel("Ready");
     private final JLabel speedLabel  = new JLabel();
     private final Preferences prefs  = Preferences.userNodeForPackage(FluxDMFrame.class);
@@ -31,48 +31,67 @@ public class FluxDMFrame extends JFrame {
         table = buildTable();
 
         // Layout
+        rebuildUI();
+
+        // Speed update timer
+        new Timer(500, e -> updateSpeedLabel()).start();
+
+        // Listen for theme changes and rebuild
+        ThemeManager.addThemeChangeListener(this::rebuildUI);
+    }
+
+    private void rebuildUI() {
+        getContentPane().removeAll();
+        table = buildTable();
         setLayout(new BorderLayout());
         add(buildTitleBar(),  BorderLayout.NORTH);
         add(buildCenter(),    BorderLayout.CENTER);
         add(buildStatusBar(), BorderLayout.SOUTH);
-
-        // Speed update timer
-        new Timer(500, e -> updateSpeedLabel()).start();
+        revalidate();
+        repaint();
     }
 
     // ─── Title Bar ───────────────────────────────────────────────────────────
 
     private JPanel buildTitleBar() {
         JPanel bar = new JPanel(new BorderLayout());
-        bar.setBackground(DarkTheme.BG_DARK);
-        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DarkTheme.BORDER));
+        bar.setBackground(ThemeManager.bgDark());
+        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, ThemeManager.border()));
         bar.setPreferredSize(new Dimension(0, 46));
 
         // Left: logo
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
-        left.setBackground(DarkTheme.BG_DARK);
+        left.setBackground(ThemeManager.bgDark());
         left.setOpaque(true);
-        JLabel logo = new JLabel("⬇  FluxDM");
+        JLabel logo = new JLabel("\u2B07  FluxDM");
         logo.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        logo.setForeground(DarkTheme.ACCENT_LIGHT);
+        logo.setForeground(ThemeManager.accentLight());
         JLabel ver = new JLabel("Download Manager v2.0");
         ver.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        ver.setForeground(DarkTheme.TEXT_DARK);
+        ver.setForeground(ThemeManager.textDark());
         left.add(logo);
         left.add(ver);
 
-        // Right: speed badge
+        // Right: speed badge + theme toggle
         speedLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        speedLabel.setForeground(DarkTheme.GREEN);
+        speedLabel.setForeground(ThemeManager.green());
         speedLabel.setOpaque(true);
-        speedLabel.setBackground(new Color(0x06, 0x4e, 0x3b));
+        speedLabel.setBackground(ThemeManager.speedBg());
         speedLabel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(0x06, 0x4e, 0x3b)),
+                BorderFactory.createLineBorder(ThemeManager.speedBg()),
                 BorderFactory.createEmptyBorder(2, 10, 2, 10)));
         speedLabel.setVisible(false);
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 0));
-        right.setBackground(DarkTheme.BG_DARK);
+
+        JButton themeBtn = ThemeManager.createButton(
+                ThemeManager.isDark() ? "\u2600" : "\uD83C\uDF19", new Color(0x37, 0x41, 0x51));
+        themeBtn.setToolTipText("Toggle light/dark theme");
+        themeBtn.setPreferredSize(new Dimension(36, 30));
+        themeBtn.addActionListener(e -> ThemeManager.toggle());
+
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        right.setBackground(ThemeManager.bgDark());
         right.add(speedLabel);
+        right.add(themeBtn);
 
         bar.add(left, BorderLayout.WEST);
         bar.add(right, BorderLayout.EAST);
@@ -83,14 +102,14 @@ public class FluxDMFrame extends JFrame {
 
     private JPanel buildToolbar() {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        bar.setBackground(DarkTheme.BG_DARK);
-        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DarkTheme.BORDER));
+        bar.setBackground(ThemeManager.bgDark());
+        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, ThemeManager.border()));
 
-        JButton addBtn     = DarkTheme.createButton("+ Add URL",        new Color(0x25, 0x63, 0xeb));
-        JButton pauseAll   = DarkTheme.createButton("⏸  Pause All",     new Color(0x37, 0x41, 0x51));
-        JButton resumeAll  = DarkTheme.createButton("▶  Resume All",    new Color(0x37, 0x41, 0x51));
-        JButton clearDone  = DarkTheme.createButton("✕  Clear Done",    new Color(0x37, 0x41, 0x51));
-        JButton openFolder = DarkTheme.createButton("📂  Downloads",    new Color(0x37, 0x41, 0x51));
+        JButton addBtn     = ThemeManager.createButton("+ Add URL",        new Color(0x25, 0x63, 0xeb));
+        JButton pauseAll   = ThemeManager.createButton("\u23F8  Pause All",     new Color(0x37, 0x41, 0x51));
+        JButton resumeAll  = ThemeManager.createButton("\u25B6  Resume All",    new Color(0x37, 0x41, 0x51));
+        JButton clearDone  = ThemeManager.createButton("\u2715  Clear Done",    new Color(0x37, 0x41, 0x51));
+        JButton openFolder = ThemeManager.createButton("\uD83D\uDCC2  Downloads",    new Color(0x37, 0x41, 0x51));
 
         bar.add(addBtn);
         bar.add(pauseAll);
@@ -101,7 +120,7 @@ public class FluxDMFrame extends JFrame {
         // Stats label (right-aligned trick with a second panel)
         JLabel statsLabel = new JLabel("Total: 0   Active: 0   Done: 0");
         statsLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        statsLabel.setForeground(DarkTheme.TEXT_MUTED);
+        statsLabel.setForeground(ThemeManager.textMuted());
         new Timer(1000, e -> {
             var tasks = tableModel.getAllTasks();
             long active = tasks.stream().filter(t -> t.getStatus() == DownloadTask.Status.DOWNLOADING).count();
@@ -137,11 +156,11 @@ public class FluxDMFrame extends JFrame {
     private JSplitPane buildCenter() {
         JPanel sidebar = buildSidebar();
         JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBackground(DarkTheme.BG_DARKEST);
+        tablePanel.setBackground(ThemeManager.bgDarkest());
         tablePanel.add(buildToolbar(), BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(table);
-        scroll.setBackground(DarkTheme.BG_DARKEST);
-        scroll.getViewport().setBackground(DarkTheme.BG_DARKEST);
+        scroll.setBackground(ThemeManager.bgDarkest());
+        scroll.getViewport().setBackground(ThemeManager.bgDarkest());
         scroll.setBorder(BorderFactory.createEmptyBorder());
         tablePanel.add(scroll, BorderLayout.CENTER);
 
@@ -149,7 +168,7 @@ public class FluxDMFrame extends JFrame {
         split.setDividerLocation(185);
         split.setDividerSize(1);
         split.setBorder(null);
-        split.setBackground(DarkTheme.BORDER);
+        split.setBackground(ThemeManager.border());
         return split;
     }
 
@@ -158,16 +177,16 @@ public class FluxDMFrame extends JFrame {
     private JPanel buildSidebar() {
         JPanel sidebar = new JPanel();
         sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
-        sidebar.setBackground(DarkTheme.BG_DARK);
-        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, DarkTheme.BORDER));
+        sidebar.setBackground(ThemeManager.bgDark());
+        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, ThemeManager.border()));
         sidebar.setPreferredSize(new Dimension(185, 0));
 
         String[][] items = {
-                {"📥", "All Downloads"},
-                {"⬇",  "Downloading"},
-                {"✓",  "Completed"},
-                {"▶",  "YouTube"},
-                {"🌐", "HTTP Files"},
+                {"\uD83D\uDCE5", "All Downloads"},
+                {"\u2B07",  "Downloading"},
+                {"\u2713",  "Completed"},
+                {"\u25B6",  "YouTube"},
+                {"\uD83C\uDF10", "HTTP Files"},
         };
 
         ButtonGroup bg = new ButtonGroup();
@@ -182,13 +201,13 @@ public class FluxDMFrame extends JFrame {
         sidebar.add(Box.createVerticalStrut(8));
 
         JSeparator sep = new JSeparator();
-        sep.setForeground(DarkTheme.BORDER);
+        sep.setForeground(ThemeManager.border());
         sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
         sidebar.add(sep);
 
         JLabel sampleLbl = new JLabel("  QUICK ADD");
         sampleLbl.setFont(new Font("Segoe UI", Font.BOLD, 9));
-        sampleLbl.setForeground(DarkTheme.TEXT_DARK);
+        sampleLbl.setForeground(ThemeManager.textDark());
         sampleLbl.setBorder(BorderFactory.createEmptyBorder(8, 0, 4, 0));
         sidebar.add(sampleLbl);
 
@@ -198,12 +217,12 @@ public class FluxDMFrame extends JFrame {
                 "https://example.com/sample-video.mp4",
         };
         for (String s : samples) {
-            String prefix = s.contains("youtube") ? "▶ " : "🌐 ";
-            String display = prefix + s.replace("https://", "").substring(0, Math.min(22, s.replace("https://","").length())) + "…";
+            String prefix = s.contains("youtube") ? "\u25B6 " : "\uD83C\uDF10 ";
+            String display = prefix + s.replace("https://", "").substring(0, Math.min(22, s.replace("https://","").length())) + "\u2026";
             JButton lnk = new JButton(display);
             lnk.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-            lnk.setForeground(DarkTheme.TEXT_DARK);
-            lnk.setBackground(DarkTheme.BG_DARK);
+            lnk.setForeground(ThemeManager.textDark());
+            lnk.setBackground(ThemeManager.bgDark());
             lnk.setBorder(BorderFactory.createEmptyBorder(3, 14, 3, 8));
             lnk.setHorizontalAlignment(SwingConstants.LEFT);
             lnk.setContentAreaFilled(false);
@@ -213,8 +232,8 @@ public class FluxDMFrame extends JFrame {
             final String url = s;
             lnk.addActionListener(e -> showAddDialog(url));
             lnk.addMouseListener(new MouseAdapter() {
-                public void mouseEntered(MouseEvent e) { lnk.setForeground(DarkTheme.TEXT_SECONDARY); }
-                public void mouseExited(MouseEvent e)  { lnk.setForeground(DarkTheme.TEXT_DARK); }
+                public void mouseEntered(MouseEvent e) { lnk.setForeground(ThemeManager.textSecondary()); }
+                public void mouseExited(MouseEvent e)  { lnk.setForeground(ThemeManager.textDark()); }
             });
             sidebar.add(lnk);
         }
@@ -232,26 +251,26 @@ public class FluxDMFrame extends JFrame {
                 if (!isRowSelected(row)) {
                     DownloadTask task = tableModel.getTask(row);
                     c.setBackground(task != null && task.getStatus() == DownloadTask.Status.COMPLETED
-                            ? new Color(0x06, 0x1a, 0x10) : DarkTheme.BG_DARKEST);
+                            ? ThemeManager.completedRow() : ThemeManager.bgDarkest());
                 }
                 return c;
             }
         };
 
-        t.setBackground(DarkTheme.BG_DARKEST);
-        t.setForeground(DarkTheme.TEXT_PRIMARY);
-        t.setGridColor(new Color(0x1a, 0x1f, 0x2e));
+        t.setBackground(ThemeManager.bgDarkest());
+        t.setForeground(ThemeManager.textPrimary());
+        t.setGridColor(ThemeManager.gridColor());
         t.setRowHeight(52);
-        t.setSelectionBackground(DarkTheme.BG_MEDIUM);
-        t.setSelectionForeground(DarkTheme.TEXT_PRIMARY);
+        t.setSelectionBackground(ThemeManager.bgMedium());
+        t.setSelectionForeground(ThemeManager.textPrimary());
         t.setShowHorizontalLines(true);
         t.setShowVerticalLines(false);
         t.setFocusable(false);
         t.setFillsViewportHeight(true);
-        t.getTableHeader().setBackground(DarkTheme.BG_DARK);
-        t.getTableHeader().setForeground(DarkTheme.TEXT_MUTED);
+        t.getTableHeader().setBackground(ThemeManager.bgDark());
+        t.getTableHeader().setForeground(ThemeManager.textMuted());
         t.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 10));
-        t.getTableHeader().setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, DarkTheme.BORDER));
+        t.getTableHeader().setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, ThemeManager.border()));
         t.getTableHeader().setReorderingAllowed(false);
 
         // Column widths
@@ -267,30 +286,30 @@ public class FluxDMFrame extends JFrame {
             @Override public Component getTableCellRendererComponent(JTable table, Object value,
                     boolean sel, boolean focus, int row, int col) {
                 super.getTableCellRendererComponent(table, value, sel, focus, row, col);
-                setBackground(sel ? DarkTheme.BG_MEDIUM : DarkTheme.BG_DARKEST);
+                setBackground(sel ? ThemeManager.bgMedium() : ThemeManager.bgDarkest());
                 setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
                 DownloadTask task = tableModel.getTask(row);
                 if (col == DownloadTableModel.COL_STATUS && task != null) {
                     setForeground(switch (task.getStatus()) {
-                        case DOWNLOADING -> DarkTheme.ACCENT_LIGHT;
-                        case COMPLETED   -> DarkTheme.GREEN;
-                        case PAUSED      -> DarkTheme.YELLOW;
-                        case FAILED, CANCELLED -> DarkTheme.RED;
-                        default          -> DarkTheme.TEXT_MUTED;
+                        case DOWNLOADING -> ThemeManager.accentLight();
+                        case COMPLETED   -> ThemeManager.green();
+                        case PAUSED      -> ThemeManager.yellow();
+                        case FAILED, CANCELLED -> ThemeManager.red();
+                        default          -> ThemeManager.textMuted();
                     });
                     setFont(new Font("Segoe UI", Font.BOLD, 11));
                 } else if (col == DownloadTableModel.COL_SPEED) {
-                    setForeground(DarkTheme.ACCENT_LIGHT);
+                    setForeground(ThemeManager.accentLight());
                     setFont(new Font("Segoe UI", Font.PLAIN, 12));
                 } else if (col == DownloadTableModel.COL_ICON) {
                     setHorizontalAlignment(CENTER);
                     setFont(new Font("Dialog", Font.PLAIN, 16));
-                    setForeground(DarkTheme.TEXT_PRIMARY);
+                    setForeground(ThemeManager.textPrimary());
                 } else if (col == DownloadTableModel.COL_NAME) {
-                    setForeground(DarkTheme.TEXT_PRIMARY);
+                    setForeground(ThemeManager.textPrimary());
                     setFont(new Font("Segoe UI", Font.BOLD, 12));
                 } else {
-                    setForeground(DarkTheme.TEXT_SECONDARY);
+                    setForeground(ThemeManager.textSecondary());
                     setFont(new Font("Segoe UI", Font.PLAIN, 12));
                 }
                 return this;
@@ -311,15 +330,15 @@ public class FluxDMFrame extends JFrame {
 
     private JPanel buildStatusBar() {
         JPanel bar = new JPanel(new BorderLayout());
-        bar.setBackground(DarkTheme.BG_DARK);
+        bar.setBackground(ThemeManager.bgDark());
         bar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, DarkTheme.BORDER),
+                BorderFactory.createMatteBorder(1, 0, 0, 0, ThemeManager.border()),
                 BorderFactory.createEmptyBorder(5, 14, 5, 14)));
         statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        statusLabel.setForeground(DarkTheme.TEXT_MUTED);
+        statusLabel.setForeground(ThemeManager.textMuted());
         JLabel saveDir = new JLabel("Save to: " + defaultSavePath());
         saveDir.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        saveDir.setForeground(DarkTheme.TEXT_DARK);
+        saveDir.setForeground(ThemeManager.textDark());
         bar.add(statusLabel, BorderLayout.WEST);
         bar.add(saveDir, BorderLayout.EAST);
         return bar;
@@ -340,7 +359,6 @@ public class FluxDMFrame extends JFrame {
 
     private void applyFilter() {
         // Swap model to a filtered one using a row sorter
-        RowFilter<DownloadTableModel, Integer> rf = RowFilter.regexFilter(""); // show all by default
         TableRowSorter<DownloadTableModel> sorter = new TableRowSorter<>(tableModel);
         sorter.setRowFilter(switch (currentFilter) {
             case "Downloading" -> RowFilter.orFilter(java.util.List.of(
@@ -379,7 +397,6 @@ public class FluxDMFrame extends JFrame {
         try {
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("mac")) {
-                // Use 'open' — always works on macOS, reveals in Finder
                 Runtime.getRuntime().exec(new String[]{"open", dir.getAbsolutePath()});
             } else if (os.contains("win")) {
                 Runtime.getRuntime().exec(new String[]{"explorer", dir.getAbsolutePath()});
@@ -397,7 +414,7 @@ public class FluxDMFrame extends JFrame {
                 .filter(t -> t.getStatus() == DownloadTask.Status.DOWNLOADING)
                 .mapToDouble(DownloadTask::getSpeed).sum();
         if (total > 0) {
-            speedLabel.setText("↓ " + Formatter.speed(total));
+            speedLabel.setText("\u2193 " + Formatter.speed(total));
             speedLabel.setVisible(true);
         } else {
             speedLabel.setVisible(false);
@@ -409,9 +426,8 @@ public class FluxDMFrame extends JFrame {
     }
 
     private String defaultSavePath() {
-        String home = System.getProperty("user.home"); // /Users/yourname on macOS
+        String home = System.getProperty("user.home");
         String saved = prefs.get("savePath", home + java.io.File.separator + "Downloads");
-        // Expand ~ if present (safety)
         if (saved.startsWith("~")) saved = home + saved.substring(1);
         java.io.File dir = new java.io.File(saved);
         if (!dir.exists()) dir.mkdirs();
@@ -419,15 +435,13 @@ public class FluxDMFrame extends JFrame {
     }
 
     private JToggleButton sidebarButton(String text) {
-        Color selBg = DarkTheme.BG_MEDIUM;
-        Color defBg = DarkTheme.BG_DARK;
         JToggleButton btn = new JToggleButton(text) {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setColor(isSelected() ? selBg : defBg);
+                g2.setColor(isSelected() ? ThemeManager.bgMedium() : ThemeManager.bgDark());
                 g2.fillRect(0, 0, getWidth(), getHeight());
                 if (isSelected()) {
-                    g2.setColor(DarkTheme.ACCENT_BLUE);
+                    g2.setColor(ThemeManager.accentBlue());
                     g2.fillRect(0, 0, 3, getHeight());
                 }
                 g2.dispose();
@@ -435,8 +449,8 @@ public class FluxDMFrame extends JFrame {
             }
         };
         btn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        btn.setForeground(DarkTheme.TEXT_MUTED);
-        btn.setBackground(defBg);
+        btn.setForeground(ThemeManager.textMuted());
+        btn.setBackground(ThemeManager.bgDark());
         btn.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
         btn.setHorizontalAlignment(SwingConstants.LEFT);
         btn.setContentAreaFilled(false);
@@ -445,7 +459,7 @@ public class FluxDMFrame extends JFrame {
         btn.setAlignmentX(LEFT_ALIGNMENT);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         btn.addChangeListener(e ->
-                btn.setForeground(btn.isSelected() ? DarkTheme.TEXT_PRIMARY : DarkTheme.TEXT_MUTED));
+                btn.setForeground(btn.isSelected() ? ThemeManager.textPrimary() : ThemeManager.textMuted()));
         return btn;
     }
 }

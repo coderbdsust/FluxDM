@@ -8,7 +8,7 @@ public class ProgressCellRenderer extends JPanel implements TableCellRenderer {
 
     private double progress = 0;
     private String label = "0%";
-    private Color barColor = DarkTheme.ACCENT_BLUE;
+    private Color barColor = ThemeManager.accentBlue();
 
     public ProgressCellRenderer() {
         setOpaque(true);
@@ -23,15 +23,15 @@ public class ProgressCellRenderer extends JPanel implements TableCellRenderer {
             int pct = (int)(progress * 100);
             label = pct + "%";
             barColor = switch (task.getStatus()) {
-                case COMPLETED  -> DarkTheme.GREEN;
-                case PAUSED     -> DarkTheme.YELLOW;
+                case COMPLETED  -> ThemeManager.green();
+                case PAUSED     -> ThemeManager.yellow();
                 case FAILED,
-                     CANCELLED  -> DarkTheme.RED;
-                default         -> DarkTheme.ACCENT_BLUE;
+                     CANCELLED  -> ThemeManager.red();
+                default         -> ThemeManager.accentBlue();
             };
         }
 
-        setBackground(isSelected ? DarkTheme.BG_MEDIUM : DarkTheme.BG_DARKEST);
+        setBackground(isSelected ? ThemeManager.bgMedium() : ThemeManager.bgDarkest());
         return this;
     }
 
@@ -47,11 +47,11 @@ public class ProgressCellRenderer extends JPanel implements TableCellRenderer {
 
         // Percent label
         g2.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        g2.setColor(DarkTheme.TEXT_PRIMARY);
+        g2.setColor(ThemeManager.textPrimary());
         g2.drawString(label, cx, barY - 7);
 
         // Track
-        g2.setColor(DarkTheme.BG_MEDIUM);
+        g2.setColor(ThemeManager.bgMedium());
         g2.fillRoundRect(cx, barY, w, barH, barH, barH);
 
         // Fill

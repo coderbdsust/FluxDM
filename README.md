@@ -1,7 +1,9 @@
 # FluxDM — Download Manager v2.0.0
 
-A fast, dark-themed Java Swing download manager with real HTTP streaming
-and YouTube downloads via `yt-dlp`.
+A fast, themeable Java Swing download manager with real HTTP streaming,
+YouTube downloads via `yt-dlp`, and YouTube-to-MP3 conversion.
+
+<img alt="Preview" src="screen/view-v1.png">
 
 ## Requirements
 
@@ -9,7 +11,7 @@ and YouTube downloads via `yt-dlp`.
 |---------|---------|-------|
 | Java    | 11+     | [Adoptium](https://adoptium.net) recommended |
 | yt-dlp  | latest  | Required for YouTube downloads |
-| ffmpeg  | any     | Optional — enables 1080p/4K YouTube |
+| ffmpeg  | any     | Optional — enables 1080p/4K YouTube + MP3 conversion |
 
 ## Quick Start
 
@@ -24,18 +26,20 @@ java -jar FluxDM-2.0.0.jar
 run.bat
 ```
 
-## Install Dependencies (macOS)
+## Install Dependencies
 
 ```bash
 # yt-dlp (required for YouTube)
 brew install yt-dlp
 
-# ffmpeg (optional — enables 1080p/4K)
+# ffmpeg (recommended — unlocks high-quality video + MP3)
 brew install ffmpeg
 ```
 
-Without ffmpeg, YouTube downloads are capped at **720p** (pre-muxed H.264+AAC).
-With ffmpeg, you get full **1080p / 4K** with merged audio+video.
+Without ffmpeg, YouTube downloads are capped at **720p** (pre-muxed H.264+AAC)
+and audio downloads produce **.m4a** files.
+With ffmpeg, you get full **1080p / 4K** with merged audio+video, plus real
+**MP3** output for audio-only downloads.
 
 ## Build from Source
 
@@ -61,9 +65,7 @@ mvn clean package
 | File | Description |
 |------|-------------|
 | `FluxDM-2.0.0.jar` | Thin JAR |
-| `FluxDM-2.0.0-fat.jar` | **Executable fat JAR** ← use this |
-| `FluxDM-2.0.0-dist.zip` | Distribution ZIP (JAR + launchers) |
-| `FluxDM-2.0.0-dist.tar.gz` | Distribution tarball |
+| `FluxDM-2.0.0-fat.jar` | **Executable fat JAR** (includes FlatLaf) ← use this |
 
 ## Project Structure
 
@@ -79,11 +81,11 @@ fluxdm/
     └── main/
         └── java/com/fluxdm/
             ├── Main.java                 Entry point
-            ├── DownloadTask.java         Core engine: HTTP + yt-dlp + ffmpeg merge
-            ├── FluxDMFrame.java          Main window
+            ├── DownloadTask.java         Core engine: HTTP + yt-dlp + ffmpeg merge + MP3
+            ├── FluxDMFrame.java          Main window + theme toggle
             ├── AddDownloadDialog.java    Add URL dialog
             ├── ActionCellHandler.java    Table row action buttons
-            ├── DarkTheme.java            Full dark Swing theme
+            ├── ThemeManager.java         Dark/light theme engine (FlatLaf)
             ├── DownloadTableModel.java   Table data model
             ├── Formatter.java            Bytes / speed / ETA formatting
             └── ProgressCellRenderer.java Progress bar renderer
@@ -93,13 +95,13 @@ fluxdm/
 
 - Real HTTP downloads — streams bytes directly to disk with live progress
 - YouTube via `yt-dlp` — real video, not simulated
+- YouTube MP3 — "Audio Only (MP3)" extracts audio and converts to `.mp3` via ffmpeg
 - ffmpeg auto-detection — checks Homebrew, PATH, common locations
 - `mergeIfNeeded()` — auto-merges leftover `.f137.mp4` + `.f140.m4a` split files
 - Clipboard URL auto-detection on dialog open
 - Pause / Resume / Cancel per download
-- Dark theme — pure Swing, zero external UI libs, works on any JDK
+- Dark / Light theme toggle — powered by FlatLaf, persists across sessions
 - macOS Finder integration — `open -R` reveals downloaded file
-- Zero runtime dependencies
 
 ## License
 MIT

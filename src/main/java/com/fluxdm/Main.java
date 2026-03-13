@@ -6,7 +6,7 @@ public class Main {
     public static void main(String[] args) {
         // Must run on Event Dispatch Thread
         SwingUtilities.invokeLater(() -> {
-            DarkTheme.apply();
+            ThemeManager.init();
             new FluxDMFrame().setVisible(true);
         });
     }
