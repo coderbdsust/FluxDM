@@ -39,6 +39,11 @@ public class DownloadTask {
     private volatile boolean cancelled  = false;
     private volatile Process ytdlpProcess = null;
 
+    private volatile long startTimeMillis  = 0;
+    private volatile long endTimeMillis    = 0;
+    private volatile long pausedAccumulated = 0;
+    private volatile long pauseStartTime   = 0;
+
     private Consumer<DownloadTask> onUpdate;
 
     public DownloadTask(String url, String savePath, String quality) {
@@ -59,7 +64,7 @@ public class DownloadTask {
             String name = path.substring(path.lastIndexOf('/') + 1);
             name = URLDecoder.decode(name.isEmpty() ? "download_" + id : name, "UTF-8");
             if (name.contains("?")) name = name.substring(0, name.indexOf('?'));
-            if (!name.contains(".")) name += isYouTube(url) ? ".mkv" : ".bin";
+            if (!name.contains(".")) name += isYouTube(url) ? ".mp4" : ".bin";
             return name;
         } catch (Exception e) { return "download_" + id + ".bin"; }
     }
@@ -89,17 +94,24 @@ public class DownloadTask {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     public void start() {
+        startTimeMillis = System.currentTimeMillis();
         status = Status.DOWNLOADING; notifyUpdate();
         EXECUTOR.submit(() -> { if (isYouTube(url)) downloadYouTube(); else downloadHttp(); });
     }
-    public void pause()  { paused = true;  speed = 0; status = Status.PAUSED;      notifyUpdate(); }
+    public void pause()  {
+        paused = true; speed = 0;
+        pauseStartTime = System.currentTimeMillis();
+        status = Status.PAUSED; notifyUpdate();
+    }
     public void resume() {
         if (status != Status.PAUSED) return;
+        pausedAccumulated += System.currentTimeMillis() - pauseStartTime;
         paused = false; status = Status.DOWNLOADING; notifyUpdate();
         EXECUTOR.submit(() -> { if (isYouTube(url)) downloadYouTube(); else downloadHttp(); });
     }
     public void cancel() {
         cancelled = true; paused = false; speed = 0;
+        endTimeMillis = System.currentTimeMillis();
         if (ytdlpProcess != null) ytdlpProcess.destroyForcibly();
         status = Status.CANCELLED; notifyUpdate();
     }
@@ -161,27 +173,21 @@ public class DownloadTask {
     // ─── YouTube via yt-dlp ───────────────────────────────────────────────────
 
     private void downloadYouTube() {
-        Consumer<String> installStatus = msg -> { fileName = msg; notifyUpdate(); };
+        // Auto-install yt-dlp if missing
+        String originalName = fileName;
+        String ytdlp = DependencyManager.ensureYtDlp(msg -> {
+            fileName = msg; notifyUpdate();
+        });
+        if (ytdlp == null) { setFailed("yt-dlp not found and auto-install failed. Install manually: brew install yt-dlp"); return; }
+        fileName = originalName; notifyUpdate();
 
-        // Try system-installed yt-dlp first, then auto-download
-        String ytdlp = BinaryManager.findBinary("yt-dlp");
-        if (ytdlp == null) {
-            ytdlp = BinaryManager.ensureYtDlp(installStatus);
-            if (ytdlp == null) { setFailed("yt-dlp not found and could not be installed"); return; }
-            fileName = extractFileName(url);
-            notifyUpdate();
-        }
-
-        // Try system-installed ffmpeg first, then auto-download
-        String ffmpeg = BinaryManager.findBinary("ffmpeg");
-        if (ffmpeg == null) {
-            ffmpeg = BinaryManager.ensureFfmpeg(installStatus);
-            fileName = extractFileName(url);
-            notifyUpdate();
-        }
-
+        // Auto-install ffmpeg if missing
+        String ffmpeg = DependencyManager.ensureFfmpeg(msg -> {
+            fileName = msg; notifyUpdate();
+        });
         boolean hasFfmpeg = ffmpeg != null;
-        System.out.println("FluxDM: yt-dlp=" + ytdlp + " ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
+        fileName = originalName; notifyUpdate();
+        System.out.println("FluxDM: ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
 
         File dir = new File(savePath); dir.mkdirs();
         // %(title)s.%(ext)s — yt-dlp will set the real extension
@@ -201,7 +207,7 @@ public class DownloadTask {
             nameProc.waitFor(20, TimeUnit.SECONDS);
             if (!predictedPath.isEmpty()) {
                 // After remux/merge the ext will be .mp4, or .mp3 for audio
-                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mkv";
+                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mp4";
                 String displayPath = predictedPath.replaceAll("\\.[^.]+$", ext);
                 savedFilePath = displayPath;
                 fileName = new File(displayPath).getName();
@@ -230,6 +236,7 @@ public class DownloadTask {
             cmd.add("--no-playlist");
             cmd.add("--no-mtime");
             cmd.add("--no-part");
+            cmd.add("--no-overwrites");
 
             if (hasFfmpeg && isAudioOnly) {
                 // Audio Only (MP3) with ffmpeg: extract audio and convert to MP3
@@ -245,7 +252,7 @@ public class DownloadTask {
                 // Download best video + best audio, merge into mp4
                 cmd.add("-f");
                 cmd.add(buildFmtFfmpeg(quality));
-                cmd.add("--merge-output-format"); cmd.add("mkv");
+                cmd.add("--merge-output-format"); cmd.add("mp4");
                 String ffmpegDir = new File(ffmpeg).getParent();
                 if (ffmpegDir != null && !ffmpegDir.isEmpty()) {
                     cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
@@ -287,7 +294,7 @@ public class DownloadTask {
                     }
                     // "[Merger] Merging formats into \"file.mp4\""
                     if (line.contains("Merging formats into") || line.contains("Merger")) {
-                        Matcher mm = Pattern.compile("\"([^\"]+\\.mkv)\"").matcher(line);
+                        Matcher mm = Pattern.compile("\"([^\"]+\\.mp4)\"").matcher(line);
                         if (mm.find()) { trackedDest = mm.group(1); savedFilePath = trackedDest; fileName = new File(trackedDest).getName(); notifyUpdate(); }
                     }
                     parseYtDlp(line);
@@ -379,6 +386,8 @@ public class DownloadTask {
         notifyUpdate();
     }
 
+    // ─── Binary finders (delegated to DependencyManager) ───────────────────
+
     // ─── File utilities ───────────────────────────────────────────────────────
 
 
@@ -412,18 +421,19 @@ public class DownloadTask {
             }
             if (videoFile == null || audioFile == null) continue;
 
-            File merged = new File(dir, entry.getKey() + ".mkv");
+            File merged = new File(dir, entry.getKey() + ".mp4");
             // Avoid clobbering an existing merged file
             if (!merged.exists()) {
                 System.out.println("FluxDM: merging " + videoFile.getName() + " + " + audioFile.getName());
                 try {
-                    // ffmpeg -i video -i audio -c copy output.mkv
+                    // ffmpeg -i video -i audio -c copy -movflags +faststart output.mp4
                     Process p = new ProcessBuilder(
                         ffmpegBin,
                         "-y",
                         "-i", videoFile.getAbsolutePath(),
                         "-i", audioFile.getAbsolutePath(),
                         "-c", "copy",
+                        "-movflags", "+faststart",
                         merged.getAbsolutePath()
                     ).redirectErrorStream(true).start();
                     // Drain output
@@ -485,9 +495,11 @@ public class DownloadTask {
 
     private void finishDownload(long bytes) {
         downloaded = bytes; if (totalSize<=0) totalSize=bytes;
+        endTimeMillis = System.currentTimeMillis();
         progress=1.0; speed=0; status=Status.COMPLETED; notifyUpdate();
     }
     private void setFailed(String reason) {
+        endTimeMillis = System.currentTimeMillis();
         speed=0; status=Status.FAILED;
         System.err.println("FluxDM FAILED: " + reason);
         notifyUpdate();
@@ -509,4 +521,15 @@ public class DownloadTask {
     public double getSpeed()         { return speed; }
     public String getAddedTime()     { return addedTime; }
     public boolean isYouTube()       { return isYouTube(url); }
+
+    /** Returns elapsed active download time in milliseconds (excludes paused time). */
+    public long getElapsedMillis() {
+        if (startTimeMillis == 0) return 0;
+        return switch (status) {
+            case DOWNLOADING -> System.currentTimeMillis() - startTimeMillis - pausedAccumulated;
+            case PAUSED      -> pauseStartTime - startTimeMillis - pausedAccumulated;
+            case COMPLETED, FAILED, CANCELLED -> endTimeMillis - startTimeMillis - pausedAccumulated;
+            default -> 0;
+        };
+    }
 }

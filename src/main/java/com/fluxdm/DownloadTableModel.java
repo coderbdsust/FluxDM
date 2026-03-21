@@ -12,10 +12,11 @@ public class DownloadTableModel extends AbstractTableModel {
     public static final int COL_PROGRESS = 3;
     public static final int COL_SPEED    = 4;
     public static final int COL_ETA      = 5;
-    public static final int COL_STATUS   = 6;
-    public static final int COL_ACTIONS  = 7;
+    public static final int COL_TIME     = 6;
+    public static final int COL_STATUS   = 7;
+    public static final int COL_ACTIONS  = 8;
 
-    private static final String[] COLUMNS = {"", "Name / URL", "Size", "Progress", "Speed", "ETA", "Status", "Actions"};
+    private static final String[] COLUMNS = {"", "Name / URL", "Size", "Progress", "Speed", "ETA", "Time", "Status", "Actions"};
 
     private final List<DownloadTask> tasks = new ArrayList<>();
 
@@ -38,6 +39,14 @@ public class DownloadTableModel extends AbstractTableModel {
     }
 
     public List<DownloadTask> getAllTasks() { return tasks; }
+
+    /** Check if a URL is already being downloaded or completed (not failed/cancelled). */
+    public boolean hasActiveUrl(String url) {
+        if (url == null || url.isBlank()) return false;
+        return tasks.stream().anyMatch(t -> url.equals(t.getUrl())
+                && t.getStatus() != DownloadTask.Status.FAILED
+                && t.getStatus() != DownloadTask.Status.CANCELLED);
+    }
 
     @Override public int getRowCount() { return tasks.size(); }
     @Override public int getColumnCount() { return COLUMNS.length; }
@@ -64,6 +73,7 @@ public class DownloadTableModel extends AbstractTableModel {
                                     ? Formatter.speed(t.getSpeed()) : "—";
             case COL_ETA      -> t.getStatus() == DownloadTask.Status.DOWNLOADING
                                     ? Formatter.eta(t.getSpeed(), t.getTotalSize() - t.getDownloaded()) : "—";
+            case COL_TIME     -> t.getElapsedMillis() > 0 ? Formatter.elapsed(t.getElapsedMillis()) : "—";
             case COL_STATUS   -> t.getStatus().toString().charAt(0)
                                     + t.getStatus().toString().substring(1).toLowerCase();
             case COL_ACTIONS  -> t;

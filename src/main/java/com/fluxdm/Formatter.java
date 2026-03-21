@@ -23,6 +23,12 @@ public class Formatter {
         m %= 60; s %= 60;
         return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
     }
+    public static String elapsed(long millis) {
+        if (millis <= 0) return "0:00";
+        int totalSec = (int) (millis / 1000);
+        int h = totalSec / 3600, m = (totalSec % 3600) / 60, s = totalSec % 60;
+        return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
+    }
     public static String icon(DownloadTask.FileType t) {
         return switch (t) {
             case YOUTUBE   -> "▶";
