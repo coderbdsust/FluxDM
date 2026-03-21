@@ -40,6 +40,14 @@ public class DownloadTableModel extends AbstractTableModel {
 
     public List<DownloadTask> getAllTasks() { return tasks; }
 
+    /** Check if a URL is already being downloaded or completed (not failed/cancelled). */
+    public boolean hasActiveUrl(String url) {
+        if (url == null || url.isBlank()) return false;
+        return tasks.stream().anyMatch(t -> url.equals(t.getUrl())
+                && t.getStatus() != DownloadTask.Status.FAILED
+                && t.getStatus() != DownloadTask.Status.CANCELLED);
+    }
+
     @Override public int getRowCount() { return tasks.size(); }
     @Override public int getColumnCount() { return COLUMNS.length; }
     @Override public String getColumnName(int col) { return COLUMNS[col]; }

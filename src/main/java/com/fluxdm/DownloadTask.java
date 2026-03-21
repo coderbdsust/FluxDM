@@ -173,12 +173,20 @@ public class DownloadTask {
     // ─── YouTube via yt-dlp ───────────────────────────────────────────────────
 
     private void downloadYouTube() {
-        String ytdlp = findBin("yt-dlp", "/usr/local/bin/yt-dlp", "/opt/homebrew/bin/yt-dlp",
-                               System.getProperty("user.home")+"/.local/bin/yt-dlp", "/usr/bin/yt-dlp");
-        if (ytdlp == null) { setFailed("yt-dlp not found. Install: brew install yt-dlp"); return; }
+        // Auto-install yt-dlp if missing
+        String originalName = fileName;
+        String ytdlp = DependencyManager.ensureYtDlp(msg -> {
+            fileName = msg; notifyUpdate();
+        });
+        if (ytdlp == null) { setFailed("yt-dlp not found and auto-install failed. Install manually: brew install yt-dlp"); return; }
+        fileName = originalName; notifyUpdate();
 
-        String ffmpeg = findFfmpeg();
+        // Auto-install ffmpeg if missing
+        String ffmpeg = DependencyManager.ensureFfmpeg(msg -> {
+            fileName = msg; notifyUpdate();
+        });
         boolean hasFfmpeg = ffmpeg != null;
+        fileName = originalName; notifyUpdate();
         System.out.println("FluxDM: ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
 
         File dir = new File(savePath); dir.mkdirs();
@@ -228,6 +236,7 @@ public class DownloadTask {
             cmd.add("--no-playlist");
             cmd.add("--no-mtime");
             cmd.add("--no-part");
+            cmd.add("--no-overwrites");
 
             if (hasFfmpeg && isAudioOnly) {
                 // Audio Only (MP3) with ffmpeg: extract audio and convert to MP3
@@ -377,54 +386,7 @@ public class DownloadTask {
         notifyUpdate();
     }
 
-    // ─── Binary finders ───────────────────────────────────────────────────────
-
-    private String findBin(String... candidates) {
-        for (String c : candidates) {
-            try {
-                // ffmpeg uses -version; yt-dlp uses --version
-                String flag = c.contains("ffmpeg") ? "-version" : "--version";
-                Process p = new ProcessBuilder(c, flag).redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        return null;
-    }
-
-    /** Find ffmpeg — checks Homebrew paths, PATH, and common macOS locations */
-    private String findFfmpeg() {
-        // Ask yt-dlp where it found ffmpeg — most reliable
-        String[] ytdlpCandidates = {"yt-dlp","/usr/local/bin/yt-dlp","/opt/homebrew/bin/yt-dlp",
-                System.getProperty("user.home")+"/.local/bin/yt-dlp"};
-        // Direct ffmpeg paths
-        String home = System.getProperty("user.home");
-        String[] ffmpegPaths = {
-            "/opt/homebrew/bin/ffmpeg",      // Homebrew Apple Silicon
-            "/usr/local/bin/ffmpeg",          // Homebrew Intel
-            "/opt/local/bin/ffmpeg",          // MacPorts
-            home + "/bin/ffmpeg",
-            home + "/.local/bin/ffmpeg",
-            "/usr/bin/ffmpeg",
-            "ffmpeg",                          // on PATH
-        };
-        for (String c : ffmpegPaths) {
-            try {
-                Process p = new ProcessBuilder(c, "-version").redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        // Last resort: ask 'which ffmpeg' / 'where ffmpeg'
-        try {
-            String os = System.getProperty("os.name").toLowerCase();
-            String whichCmd = os.contains("win") ? "where" : "which";
-            Process p = new ProcessBuilder(whichCmd, "ffmpeg").redirectErrorStream(true).start();
-            String result = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))
-                .lines().findFirst().orElse("").trim();
-            p.waitFor(5, TimeUnit.SECONDS);
-            if (!result.isEmpty() && new File(result).exists()) return result;
-        } catch (Exception ignored) {}
-        return null;
-    }
+    // ─── Binary finders (delegated to DependencyManager) ───────────────────
 
     // ─── File utilities ───────────────────────────────────────────────────────
 

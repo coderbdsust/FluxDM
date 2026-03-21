@@ -27,14 +27,7 @@ public class AddDownloadDialog extends JDialog {
     };
 
     private static boolean checkFfmpeg() {
-        String[] candidates = {"ffmpeg", "/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/bin/ffmpeg"};
-        for (String c : candidates) {
-            try {
-                Process p = new ProcessBuilder(c, "-version").redirectErrorStream(true).start();
-                if (p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0) return true;
-            } catch (Exception ignored) {}
-        }
-        return false;
+        return DependencyManager.findFfmpeg() != null;
     }
 
     /** Returns clipboard text if it looks like a URL, else null */

@@ -342,6 +342,16 @@ public class FluxDMFrame extends JFrame {
         dlg.setVisible(true);
         DownloadTask task = dlg.getResult();
         if (task != null) {
+            // Prevent duplicate downloads of the same URL
+            if (tableModel.hasActiveUrl(task.getUrl())) {
+                int choice = JOptionPane.showConfirmDialog(this,
+                        "This URL is already in your download list.\nDownload again?",
+                        "Duplicate URL", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (choice != JOptionPane.YES_OPTION) {
+                    setStatus("Duplicate download skipped");
+                    return;
+                }
+            }
             tableModel.addTask(task);
             task.start();
             setStatus("Download started: " + task.getFileName());
