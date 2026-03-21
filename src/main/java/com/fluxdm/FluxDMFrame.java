@@ -37,6 +37,12 @@ public class FluxDMFrame extends JFrame {
         // Speed update timer
         new Timer(500, e -> updateSpeedLabel()).start();
 
+        // Timer column update — repaint table every second for live elapsed time
+        new Timer(1000, e -> {
+            if (tableModel.getAllTasks().stream().anyMatch(t -> t.getStatus() == DownloadTask.Status.DOWNLOADING))
+                table.repaint();
+        }).start();
+
         // Listen for theme changes and rebuild
         ThemeManager.addThemeChangeListener(this::rebuildUI);
 
@@ -255,7 +261,7 @@ public class FluxDMFrame extends JFrame {
         t.getTableHeader().setReorderingAllowed(false);
 
         // Column widths
-        int[] widths = {36, 300, 130, 150, 90, 70, 90, 100};
+        int[] widths = {36, 280, 130, 150, 90, 70, 70, 90, 100};
         for (int i = 0; i < widths.length; i++) {
             t.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
             if (i == 0) { t.getColumnModel().getColumn(0).setMaxWidth(36); t.getColumnModel().getColumn(0).setMinWidth(36); }
@@ -278,6 +284,10 @@ public class FluxDMFrame extends JFrame {
                         case FAILED, CANCELLED -> ThemeManager.red();
                         default          -> ThemeManager.textMuted();
                     });
+                    setFont(new Font("Segoe UI", Font.BOLD, 11));
+                } else if (col == DownloadTableModel.COL_TIME) {
+                    setForeground(task != null && task.getStatus() == DownloadTask.Status.DOWNLOADING
+                            ? ThemeManager.accentLight() : ThemeManager.textSecondary());
                     setFont(new Font("Segoe UI", Font.BOLD, 11));
                 } else if (col == DownloadTableModel.COL_SPEED) {
                     setForeground(ThemeManager.accentLight());

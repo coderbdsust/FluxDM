@@ -39,6 +39,11 @@ public class DownloadTask {
     private volatile boolean cancelled  = false;
     private volatile Process ytdlpProcess = null;
 
+    private volatile long startTimeMillis  = 0;
+    private volatile long endTimeMillis    = 0;
+    private volatile long pausedAccumulated = 0;
+    private volatile long pauseStartTime   = 0;
+
     private Consumer<DownloadTask> onUpdate;
 
     public DownloadTask(String url, String savePath, String quality) {
@@ -89,17 +94,24 @@ public class DownloadTask {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     public void start() {
+        startTimeMillis = System.currentTimeMillis();
         status = Status.DOWNLOADING; notifyUpdate();
         EXECUTOR.submit(() -> { if (isYouTube(url)) downloadYouTube(); else downloadHttp(); });
     }
-    public void pause()  { paused = true;  speed = 0; status = Status.PAUSED;      notifyUpdate(); }
+    public void pause()  {
+        paused = true; speed = 0;
+        pauseStartTime = System.currentTimeMillis();
+        status = Status.PAUSED; notifyUpdate();
+    }
     public void resume() {
         if (status != Status.PAUSED) return;
+        pausedAccumulated += System.currentTimeMillis() - pauseStartTime;
         paused = false; status = Status.DOWNLOADING; notifyUpdate();
         EXECUTOR.submit(() -> { if (isYouTube(url)) downloadYouTube(); else downloadHttp(); });
     }
     public void cancel() {
         cancelled = true; paused = false; speed = 0;
+        endTimeMillis = System.currentTimeMillis();
         if (ytdlpProcess != null) ytdlpProcess.destroyForcibly();
         status = Status.CANCELLED; notifyUpdate();
     }
@@ -521,9 +533,11 @@ public class DownloadTask {
 
     private void finishDownload(long bytes) {
         downloaded = bytes; if (totalSize<=0) totalSize=bytes;
+        endTimeMillis = System.currentTimeMillis();
         progress=1.0; speed=0; status=Status.COMPLETED; notifyUpdate();
     }
     private void setFailed(String reason) {
+        endTimeMillis = System.currentTimeMillis();
         speed=0; status=Status.FAILED;
         System.err.println("FluxDM FAILED: " + reason);
         notifyUpdate();
@@ -545,4 +559,15 @@ public class DownloadTask {
     public double getSpeed()         { return speed; }
     public String getAddedTime()     { return addedTime; }
     public boolean isYouTube()       { return isYouTube(url); }
+
+    /** Returns elapsed active download time in milliseconds (excludes paused time). */
+    public long getElapsedMillis() {
+        if (startTimeMillis == 0) return 0;
+        return switch (status) {
+            case DOWNLOADING -> System.currentTimeMillis() - startTimeMillis - pausedAccumulated;
+            case PAUSED      -> pauseStartTime - startTimeMillis - pausedAccumulated;
+            case COMPLETED, FAILED, CANCELLED -> endTimeMillis - startTimeMillis - pausedAccumulated;
+            default -> 0;
+        };
+    }
 }
