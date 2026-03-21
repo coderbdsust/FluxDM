@@ -3,7 +3,7 @@ package com.fluxdm;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.zip.*;
 
@@ -18,10 +18,17 @@ public class DependencyManager {
     private static final boolean IS_MAC   = System.getProperty("os.name", "").toLowerCase().contains("mac");
     private static final boolean IS_LINUX = System.getProperty("os.name", "").toLowerCase().contains("linux");
 
+    // Cached paths — probed once per session
+    private static volatile String cachedYtDlp  = null;
+    private static volatile String cachedFfmpeg = null;
+    private static volatile boolean ytDlpProbed  = false;
+    private static volatile boolean ffmpegProbed = false;
+
     // ─── yt-dlp ──────────────────────────────────────────────────────────────
 
     /** Find yt-dlp on the system or in BIN_DIR. Returns absolute path or null. */
     public static String findYtDlp() {
+        if (ytDlpProbed) return cachedYtDlp;
         String home = System.getProperty("user.home");
         String[] candidates = {
             BIN_DIR.resolve("yt-dlp").toString(),
@@ -31,7 +38,9 @@ public class DependencyManager {
             "/usr/bin/yt-dlp",
             "yt-dlp",
         };
-        return probeExe(candidates, "--version");
+        cachedYtDlp = probeExe(candidates, "--version");
+        ytDlpProbed = true;
+        return cachedYtDlp;
     }
 
     /**
@@ -59,6 +68,7 @@ public class DependencyManager {
         if (probeExe(new String[]{path}, "--version") == null) {
             throw new IOException("Downloaded yt-dlp binary is not functional");
         }
+        cachedYtDlp = path; ytDlpProbed = true;
         if (status != null) status.accept("yt-dlp ready");
         return path;
     }
@@ -67,6 +77,7 @@ public class DependencyManager {
 
     /** Find ffmpeg on the system or in BIN_DIR. Returns absolute path or null. */
     public static String findFfmpeg() {
+        if (ffmpegProbed) return cachedFfmpeg;
         String home = System.getProperty("user.home");
         String[] candidates = {
             BIN_DIR.resolve("ffmpeg").toString(),
@@ -78,19 +89,20 @@ public class DependencyManager {
             "/usr/bin/ffmpeg",
             "ffmpeg",
         };
-        String result = probeExe(candidates, "-version");
-        if (result != null) return result;
-
-        // Last resort: which/where
-        try {
-            String whichCmd = IS_MAC || IS_LINUX ? "which" : "where";
-            Process p = new ProcessBuilder(whichCmd, "ffmpeg").redirectErrorStream(true).start();
-            String line = new BufferedReader(new InputStreamReader(p.getInputStream()))
-                .lines().findFirst().orElse("").trim();
-            p.waitFor(5, TimeUnit.SECONDS);
-            if (!line.isEmpty() && new File(line).exists()) return line;
-        } catch (Exception ignored) {}
-        return null;
+        cachedFfmpeg = probeExe(candidates, "-version");
+        if (cachedFfmpeg == null) {
+            // Last resort: which/where
+            try {
+                String whichCmd = IS_MAC || IS_LINUX ? "which" : "where";
+                Process p = new ProcessBuilder(whichCmd, "ffmpeg").redirectErrorStream(true).start();
+                String line = new BufferedReader(new InputStreamReader(p.getInputStream()))
+                    .lines().findFirst().orElse("").trim();
+                p.waitFor(3, TimeUnit.SECONDS);
+                if (!line.isEmpty() && new File(line).exists()) cachedFfmpeg = line;
+            } catch (Exception ignored) {}
+        }
+        ffmpegProbed = true;
+        return cachedFfmpeg;
     }
 
     /**
@@ -120,6 +132,7 @@ public class DependencyManager {
         if (probeExe(new String[]{path}, "-version") == null) {
             throw new IOException("Downloaded ffmpeg binary is not functional");
         }
+        cachedFfmpeg = path; ffmpegProbed = true;
         if (status != null) status.accept("ffmpeg ready");
         return path;
     }
@@ -184,9 +197,11 @@ public class DependencyManager {
     private static String probeExe(String[] candidates, String versionFlag) {
         for (String c : candidates) {
             try {
+                // Skip absolute paths that don't exist on disk — avoids spawning a process
+                if (c.startsWith("/") && !new File(c).isFile()) continue;
                 Process p = new ProcessBuilder(c, versionFlag).redirectErrorStream(true).start();
                 p.getInputStream().transferTo(OutputStream.nullOutputStream());
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
+                if (p.waitFor(3, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
             } catch (Exception ignored) {}
         }
         return null;

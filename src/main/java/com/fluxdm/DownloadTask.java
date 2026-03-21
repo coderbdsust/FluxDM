@@ -161,20 +161,25 @@ public class DownloadTask {
     // ─── YouTube via yt-dlp ───────────────────────────────────────────────────
 
     private void downloadYouTube() {
+        // Probe/download yt-dlp and ffmpeg in parallel
+        CompletableFuture<String> ytdlpFuture = CompletableFuture.supplyAsync(() -> {
+            try { return DependencyManager.ensureYtDlp(s -> { fileName = s; notifyUpdate(); }); }
+            catch (Exception e) { throw new CompletionException(e); }
+        });
+        CompletableFuture<String> ffmpegFuture = CompletableFuture.supplyAsync(() -> {
+            try { return DependencyManager.ensureFfmpeg(s -> { fileName = s; notifyUpdate(); }); }
+            catch (Exception e) { return null; }
+        });
+
         String ytdlp;
         try {
-            ytdlp = DependencyManager.ensureYtDlp(s -> { fileName = s; notifyUpdate(); });
-        } catch (Exception e) {
-            setFailed("Failed to get yt-dlp: " + e.getMessage());
+            ytdlp = ytdlpFuture.join();
+        } catch (CompletionException e) {
+            setFailed("Failed to get yt-dlp: " + e.getCause().getMessage());
             return;
         }
 
-        String ffmpeg;
-        try {
-            ffmpeg = DependencyManager.ensureFfmpeg(s -> { fileName = s; notifyUpdate(); });
-        } catch (Exception e) {
-            ffmpeg = null; // proceed without ffmpeg
-        }
+        String ffmpeg = ffmpegFuture.join();
         boolean hasFfmpeg = ffmpeg != null;
         System.out.println("FluxDM: ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
 
