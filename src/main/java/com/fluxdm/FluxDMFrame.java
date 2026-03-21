@@ -15,6 +15,7 @@ public class FluxDMFrame extends JFrame {
     private final JLabel speedLabel  = new JLabel();
     private final Preferences prefs  = Preferences.userNodeForPackage(FluxDMFrame.class);
     private String currentFilter     = "All Downloads";
+    private IntegrationServer integrationServer;
 
     public FluxDMFrame() {
         super("FluxDM — Download Manager");
@@ -38,6 +39,28 @@ public class FluxDMFrame extends JFrame {
 
         // Listen for theme changes and rebuild
         ThemeManager.addThemeChangeListener(this::rebuildUI);
+
+        // Start browser integration server
+        integrationServer = new IntegrationServer(this::addUrlFromExternal);
+        integrationServer.start();
+
+        // Stop server on window close
+        addWindowListener(new WindowAdapter() {
+            @Override public void windowClosing(WindowEvent e) {
+                integrationServer.stop();
+            }
+        });
+    }
+
+    /** Called from IntegrationServer when a URL is received from the browser extension. */
+    private void addUrlFromExternal(String url) {
+        SwingUtilities.invokeLater(() -> {
+            // Bring window to front
+            if (getState() == ICONIFIED) setState(NORMAL);
+            toFront();
+            requestFocus();
+            showAddDialog(url);
+        });
     }
 
     private void rebuildUI() {
@@ -184,9 +207,7 @@ public class FluxDMFrame extends JFrame {
         String[][] items = {
                 {"\uD83D\uDCE5", "All Downloads"},
                 {"\u2B07",  "Downloading"},
-                {"\u2713",  "Completed"},
-                {"\u25B6",  "YouTube"},
-                {"\uD83C\uDF10", "HTTP Files"},
+                {"\u2713",  "Completed"}
         };
 
         ButtonGroup bg = new ButtonGroup();
@@ -199,46 +220,6 @@ public class FluxDMFrame extends JFrame {
         }
 
         sidebar.add(Box.createVerticalStrut(8));
-
-        JSeparator sep = new JSeparator();
-        sep.setForeground(ThemeManager.border());
-        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        sidebar.add(sep);
-
-        JLabel sampleLbl = new JLabel("  QUICK ADD");
-        sampleLbl.setFont(new Font("Segoe UI", Font.BOLD, 9));
-        sampleLbl.setForeground(ThemeManager.textDark());
-        sampleLbl.setBorder(BorderFactory.createEmptyBorder(8, 0, 4, 0));
-        sidebar.add(sampleLbl);
-
-        String[] samples = {
-                "https://youtube.com/watch?v=dQw4w9WgXcQ",
-                "https://releases.ubuntu.com/ubuntu-22.04.iso",
-                "https://example.com/sample-video.mp4",
-        };
-        for (String s : samples) {
-            String prefix = s.contains("youtube") ? "\u25B6 " : "\uD83C\uDF10 ";
-            String display = prefix + s.replace("https://", "").substring(0, Math.min(22, s.replace("https://","").length())) + "\u2026";
-            JButton lnk = new JButton(display);
-            lnk.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-            lnk.setForeground(ThemeManager.textDark());
-            lnk.setBackground(ThemeManager.bgDark());
-            lnk.setBorder(BorderFactory.createEmptyBorder(3, 14, 3, 8));
-            lnk.setHorizontalAlignment(SwingConstants.LEFT);
-            lnk.setContentAreaFilled(false);
-            lnk.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            lnk.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-            lnk.setAlignmentX(LEFT_ALIGNMENT);
-            final String url = s;
-            lnk.addActionListener(e -> showAddDialog(url));
-            lnk.addMouseListener(new MouseAdapter() {
-                public void mouseEntered(MouseEvent e) { lnk.setForeground(ThemeManager.textSecondary()); }
-                public void mouseExited(MouseEvent e)  { lnk.setForeground(ThemeManager.textDark()); }
-            });
-            sidebar.add(lnk);
-        }
-
-        sidebar.add(Box.createVerticalGlue());
         return sidebar;
     }
 
