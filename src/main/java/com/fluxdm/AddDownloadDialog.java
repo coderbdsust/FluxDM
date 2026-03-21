@@ -27,14 +27,7 @@ public class AddDownloadDialog extends JDialog {
     };
 
     private static boolean checkFfmpeg() {
-        String[] candidates = {"ffmpeg", "/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/bin/ffmpeg"};
-        for (String c : candidates) {
-            try {
-                Process p = new ProcessBuilder(c, "-version").redirectErrorStream(true).start();
-                if (p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0) return true;
-            } catch (Exception ignored) {}
-        }
-        return false;
+        return DependencyManager.findFfmpeg() != null;
     }
 
     /** Returns clipboard text if it looks like a URL, else null */
@@ -166,9 +159,9 @@ public class AddDownloadDialog extends JDialog {
         // ffmpeg status hint
         JLabel ffmpegHint = new JLabel(hasFfmpeg
                 ? "\u2713  ffmpeg found \u2014 best quality + audio merge + MP3 conversion enabled"
-                : "\u26A0  ffmpeg not found \u2014 using pre-muxed streams (max ~720p), MP3 unavailable. Install: brew install ffmpeg");
+                : "\u2139  ffmpeg not found \u2014 will be auto-installed when needed");
         ffmpegHint.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-        ffmpegHint.setForeground(hasFfmpeg ? ThemeManager.green() : ThemeManager.yellow());
+        ffmpegHint.setForeground(hasFfmpeg ? ThemeManager.green() : ThemeManager.accentBlue());
         ytPanel.add(ffmpegHint);
         ytPanel.add(Box.createVerticalStrut(8));
 
@@ -176,10 +169,10 @@ public class AddDownloadDialog extends JDialog {
         JPanel qPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         qPanel.setBackground(qPanelBg);
 
-        // MP3 warning label (shown when Audio Only selected without ffmpeg)
-        JLabel mp3Warning = new JLabel("\u26A0 Without ffmpeg, audio downloads as .m4a (not MP3)");
+        // MP3 info label (shown when Audio Only selected without ffmpeg)
+        JLabel mp3Warning = new JLabel("\u2139 ffmpeg will be auto-installed for MP3 conversion");
         mp3Warning.setFont(new Font("Segoe UI", Font.BOLD, 10));
-        mp3Warning.setForeground(ThemeManager.red());
+        mp3Warning.setForeground(ThemeManager.accentBlue());
         mp3Warning.setVisible(false);
 
         for (String q : QUALITIES) {

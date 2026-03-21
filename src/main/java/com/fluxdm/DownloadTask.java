@@ -59,7 +59,7 @@ public class DownloadTask {
             String name = path.substring(path.lastIndexOf('/') + 1);
             name = URLDecoder.decode(name.isEmpty() ? "download_" + id : name, "UTF-8");
             if (name.contains("?")) name = name.substring(0, name.indexOf('?'));
-            if (!name.contains(".")) name += isYouTube(url) ? ".mp4" : ".bin";
+            if (!name.contains(".")) name += isYouTube(url) ? ".mkv" : ".bin";
             return name;
         } catch (Exception e) { return "download_" + id + ".bin"; }
     }
@@ -161,11 +161,20 @@ public class DownloadTask {
     // ─── YouTube via yt-dlp ───────────────────────────────────────────────────
 
     private void downloadYouTube() {
-        String ytdlp = findBin("yt-dlp", "/usr/local/bin/yt-dlp", "/opt/homebrew/bin/yt-dlp",
-                               System.getProperty("user.home")+"/.local/bin/yt-dlp", "/usr/bin/yt-dlp");
-        if (ytdlp == null) { setFailed("yt-dlp not found. Install: brew install yt-dlp"); return; }
+        String ytdlp;
+        try {
+            ytdlp = DependencyManager.ensureYtDlp(s -> { fileName = s; notifyUpdate(); });
+        } catch (Exception e) {
+            setFailed("Failed to get yt-dlp: " + e.getMessage());
+            return;
+        }
 
-        String ffmpeg = findFfmpeg();
+        String ffmpeg;
+        try {
+            ffmpeg = DependencyManager.ensureFfmpeg(s -> { fileName = s; notifyUpdate(); });
+        } catch (Exception e) {
+            ffmpeg = null; // proceed without ffmpeg
+        }
         boolean hasFfmpeg = ffmpeg != null;
         System.out.println("FluxDM: ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
 
@@ -187,7 +196,7 @@ public class DownloadTask {
             nameProc.waitFor(20, TimeUnit.SECONDS);
             if (!predictedPath.isEmpty()) {
                 // After remux/merge the ext will be .mp4, or .mp3 for audio
-                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mp4";
+                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mkv";
                 String displayPath = predictedPath.replaceAll("\\.[^.]+$", ext);
                 savedFilePath = displayPath;
                 fileName = new File(displayPath).getName();
@@ -200,7 +209,7 @@ public class DownloadTask {
             // YouTube DASH streams are always either video-only OR audio-only.
             // A pre-muxed stream with both video+audio tops out at 720p (format 22).
             //
-            // WITH ffmpeg:    download best video + best audio separately, then merge to mp4.
+            // WITH ffmpeg:    download best video + best audio separately, then merge to mkv.
             //                 This is the only way to get 1080p/4K with audio.
             //
             // WITHOUT ffmpeg: use format 22 (720p H.264+AAC, pre-muxed, always playable)
@@ -228,10 +237,10 @@ public class DownloadTask {
                     cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
                 }
             } else if (hasFfmpeg) {
-                // Download best video + best audio, merge into mp4
+                // Download best video + best audio, merge into mkv
                 cmd.add("-f");
                 cmd.add(buildFmtFfmpeg(quality));
-                cmd.add("--merge-output-format"); cmd.add("mp4");
+                cmd.add("--merge-output-format"); cmd.add("mkv");
                 String ffmpegDir = new File(ffmpeg).getParent();
                 if (ffmpegDir != null && !ffmpegDir.isEmpty()) {
                     cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
@@ -271,9 +280,9 @@ public class DownloadTask {
                         String dest = line.substring(line.indexOf("Destination:") + 12).trim();
                         if (!dest.isEmpty()) { trackedDest = dest; savedFilePath = dest; fileName = new File(dest).getName(); notifyUpdate(); }
                     }
-                    // "[Merger] Merging formats into \"file.mp4\""
+                    // "[Merger] Merging formats into \"file.mkv\"" (or .mp4)
                     if (line.contains("Merging formats into") || line.contains("Merger")) {
-                        Matcher mm = Pattern.compile("\"([^\"]+\\.mp4)\"").matcher(line);
+                        Matcher mm = Pattern.compile("\"([^\"]+\\.(mkv|mp4))\"").matcher(line);
                         if (mm.find()) { trackedDest = mm.group(1); savedFilePath = trackedDest; fileName = new File(trackedDest).getName(); notifyUpdate(); }
                     }
                     parseYtDlp(line);
@@ -365,54 +374,6 @@ public class DownloadTask {
         notifyUpdate();
     }
 
-    // ─── Binary finders ───────────────────────────────────────────────────────
-
-    private String findBin(String... candidates) {
-        for (String c : candidates) {
-            try {
-                // ffmpeg uses -version; yt-dlp uses --version
-                String flag = c.contains("ffmpeg") ? "-version" : "--version";
-                Process p = new ProcessBuilder(c, flag).redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        return null;
-    }
-
-    /** Find ffmpeg — checks Homebrew paths, PATH, and common macOS locations */
-    private String findFfmpeg() {
-        // Ask yt-dlp where it found ffmpeg — most reliable
-        String[] ytdlpCandidates = {"yt-dlp","/usr/local/bin/yt-dlp","/opt/homebrew/bin/yt-dlp",
-                System.getProperty("user.home")+"/.local/bin/yt-dlp"};
-        // Direct ffmpeg paths
-        String home = System.getProperty("user.home");
-        String[] ffmpegPaths = {
-            "/opt/homebrew/bin/ffmpeg",      // Homebrew Apple Silicon
-            "/usr/local/bin/ffmpeg",          // Homebrew Intel
-            "/opt/local/bin/ffmpeg",          // MacPorts
-            home + "/bin/ffmpeg",
-            home + "/.local/bin/ffmpeg",
-            "/usr/bin/ffmpeg",
-            "ffmpeg",                          // on PATH
-        };
-        for (String c : ffmpegPaths) {
-            try {
-                Process p = new ProcessBuilder(c, "-version").redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        // Last resort: ask 'which ffmpeg' / 'where ffmpeg'
-        try {
-            String os = System.getProperty("os.name").toLowerCase();
-            String whichCmd = os.contains("win") ? "where" : "which";
-            Process p = new ProcessBuilder(whichCmd, "ffmpeg").redirectErrorStream(true).start();
-            String result = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))
-                .lines().findFirst().orElse("").trim();
-            p.waitFor(5, TimeUnit.SECONDS);
-            if (!result.isEmpty() && new File(result).exists()) return result;
-        } catch (Exception ignored) {}
-        return null;
-    }
 
     // ─── File utilities ───────────────────────────────────────────────────────
 
@@ -447,19 +408,18 @@ public class DownloadTask {
             }
             if (videoFile == null || audioFile == null) continue;
 
-            File merged = new File(dir, entry.getKey() + ".mp4");
+            File merged = new File(dir, entry.getKey() + ".mkv");
             // Avoid clobbering an existing merged file
             if (!merged.exists()) {
                 System.out.println("FluxDM: merging " + videoFile.getName() + " + " + audioFile.getName());
                 try {
-                    // ffmpeg -i video -i audio -c copy -movflags +faststart output.mp4
+                    // ffmpeg -i video -i audio -c copy output.mkv
                     Process p = new ProcessBuilder(
                         ffmpegBin,
                         "-y",
                         "-i", videoFile.getAbsolutePath(),
                         "-i", audioFile.getAbsolutePath(),
                         "-c", "copy",
-                        "-movflags", "+faststart",
                         merged.getAbsolutePath()
                     ).redirectErrorStream(true).start();
                     // Drain output
