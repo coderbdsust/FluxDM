@@ -105,10 +105,16 @@ public class FluxDMFrame extends JFrame {
                 BorderFactory.createEmptyBorder(2, 10, 2, 10)));
         speedLabel.setVisible(false);
 
-        JButton themeBtn = ThemeManager.createButton(
-                ThemeManager.isDark() ? "\u2600" : "\uD83C\uDF19", new Color(0x37, 0x41, 0x51));
-        themeBtn.setToolTipText("Toggle light/dark theme");
+        JToggleButton themeBtn = new JToggleButton(ThemeManager.isDark() ? "\u2600" : "\uD83C\uDF19");
+        themeBtn.setSelected(ThemeManager.isDark());
+        themeBtn.setToolTipText(ThemeManager.isDark() ? "Switch to light theme" : "Switch to dark theme");
+        themeBtn.setFont(new Font("Dialog", Font.PLAIN, 14));
         themeBtn.setPreferredSize(new Dimension(36, 30));
+        themeBtn.setBackground(new Color(0x37, 0x41, 0x51));
+        themeBtn.setForeground(ThemeManager.textPrimary());
+        themeBtn.setFocusPainted(false);
+        themeBtn.setBorderPainted(false);
+        themeBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         themeBtn.addActionListener(e -> ThemeManager.toggle());
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));

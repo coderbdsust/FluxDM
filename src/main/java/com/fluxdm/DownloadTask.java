@@ -59,7 +59,7 @@ public class DownloadTask {
             String name = path.substring(path.lastIndexOf('/') + 1);
             name = URLDecoder.decode(name.isEmpty() ? "download_" + id : name, "UTF-8");
             if (name.contains("?")) name = name.substring(0, name.indexOf('?'));
-            if (!name.contains(".")) name += isYouTube(url) ? ".mp4" : ".bin";
+            if (!name.contains(".")) name += isYouTube(url) ? ".mkv" : ".bin";
             return name;
         } catch (Exception e) { return "download_" + id + ".bin"; }
     }
@@ -161,13 +161,27 @@ public class DownloadTask {
     // ─── YouTube via yt-dlp ───────────────────────────────────────────────────
 
     private void downloadYouTube() {
-        String ytdlp = findBin("yt-dlp", "/usr/local/bin/yt-dlp", "/opt/homebrew/bin/yt-dlp",
-                               System.getProperty("user.home")+"/.local/bin/yt-dlp", "/usr/bin/yt-dlp");
-        if (ytdlp == null) { setFailed("yt-dlp not found. Install: brew install yt-dlp"); return; }
+        Consumer<String> installStatus = msg -> { fileName = msg; notifyUpdate(); };
 
-        String ffmpeg = findFfmpeg();
+        // Try system-installed yt-dlp first, then auto-download
+        String ytdlp = BinaryManager.findBinary("yt-dlp");
+        if (ytdlp == null) {
+            ytdlp = BinaryManager.ensureYtDlp(installStatus);
+            if (ytdlp == null) { setFailed("yt-dlp not found and could not be installed"); return; }
+            fileName = extractFileName(url);
+            notifyUpdate();
+        }
+
+        // Try system-installed ffmpeg first, then auto-download
+        String ffmpeg = BinaryManager.findBinary("ffmpeg");
+        if (ffmpeg == null) {
+            ffmpeg = BinaryManager.ensureFfmpeg(installStatus);
+            fileName = extractFileName(url);
+            notifyUpdate();
+        }
+
         boolean hasFfmpeg = ffmpeg != null;
-        System.out.println("FluxDM: ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
+        System.out.println("FluxDM: yt-dlp=" + ytdlp + " ffmpeg=" + ffmpeg + " hasFfmpeg=" + hasFfmpeg);
 
         File dir = new File(savePath); dir.mkdirs();
         // %(title)s.%(ext)s — yt-dlp will set the real extension
@@ -187,7 +201,7 @@ public class DownloadTask {
             nameProc.waitFor(20, TimeUnit.SECONDS);
             if (!predictedPath.isEmpty()) {
                 // After remux/merge the ext will be .mp4, or .mp3 for audio
-                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mp4";
+                String ext = isAudioOnly && hasFfmpeg ? ".mp3" : isAudioOnly ? ".m4a" : ".mkv";
                 String displayPath = predictedPath.replaceAll("\\.[^.]+$", ext);
                 savedFilePath = displayPath;
                 fileName = new File(displayPath).getName();
@@ -231,7 +245,7 @@ public class DownloadTask {
                 // Download best video + best audio, merge into mp4
                 cmd.add("-f");
                 cmd.add(buildFmtFfmpeg(quality));
-                cmd.add("--merge-output-format"); cmd.add("mp4");
+                cmd.add("--merge-output-format"); cmd.add("mkv");
                 String ffmpegDir = new File(ffmpeg).getParent();
                 if (ffmpegDir != null && !ffmpegDir.isEmpty()) {
                     cmd.add("--ffmpeg-location"); cmd.add(ffmpegDir);
@@ -273,7 +287,7 @@ public class DownloadTask {
                     }
                     // "[Merger] Merging formats into \"file.mp4\""
                     if (line.contains("Merging formats into") || line.contains("Merger")) {
-                        Matcher mm = Pattern.compile("\"([^\"]+\\.mp4)\"").matcher(line);
+                        Matcher mm = Pattern.compile("\"([^\"]+\\.mkv)\"").matcher(line);
                         if (mm.find()) { trackedDest = mm.group(1); savedFilePath = trackedDest; fileName = new File(trackedDest).getName(); notifyUpdate(); }
                     }
                     parseYtDlp(line);
@@ -365,55 +379,6 @@ public class DownloadTask {
         notifyUpdate();
     }
 
-    // ─── Binary finders ───────────────────────────────────────────────────────
-
-    private String findBin(String... candidates) {
-        for (String c : candidates) {
-            try {
-                // ffmpeg uses -version; yt-dlp uses --version
-                String flag = c.contains("ffmpeg") ? "-version" : "--version";
-                Process p = new ProcessBuilder(c, flag).redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        return null;
-    }
-
-    /** Find ffmpeg — checks Homebrew paths, PATH, and common macOS locations */
-    private String findFfmpeg() {
-        // Ask yt-dlp where it found ffmpeg — most reliable
-        String[] ytdlpCandidates = {"yt-dlp","/usr/local/bin/yt-dlp","/opt/homebrew/bin/yt-dlp",
-                System.getProperty("user.home")+"/.local/bin/yt-dlp"};
-        // Direct ffmpeg paths
-        String home = System.getProperty("user.home");
-        String[] ffmpegPaths = {
-            "/opt/homebrew/bin/ffmpeg",      // Homebrew Apple Silicon
-            "/usr/local/bin/ffmpeg",          // Homebrew Intel
-            "/opt/local/bin/ffmpeg",          // MacPorts
-            home + "/bin/ffmpeg",
-            home + "/.local/bin/ffmpeg",
-            "/usr/bin/ffmpeg",
-            "ffmpeg",                          // on PATH
-        };
-        for (String c : ffmpegPaths) {
-            try {
-                Process p = new ProcessBuilder(c, "-version").redirectErrorStream(true).start();
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) return c;
-            } catch (Exception ignored) {}
-        }
-        // Last resort: ask 'which ffmpeg' / 'where ffmpeg'
-        try {
-            String os = System.getProperty("os.name").toLowerCase();
-            String whichCmd = os.contains("win") ? "where" : "which";
-            Process p = new ProcessBuilder(whichCmd, "ffmpeg").redirectErrorStream(true).start();
-            String result = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))
-                .lines().findFirst().orElse("").trim();
-            p.waitFor(5, TimeUnit.SECONDS);
-            if (!result.isEmpty() && new File(result).exists()) return result;
-        } catch (Exception ignored) {}
-        return null;
-    }
-
     // ─── File utilities ───────────────────────────────────────────────────────
 
 
@@ -447,19 +412,18 @@ public class DownloadTask {
             }
             if (videoFile == null || audioFile == null) continue;
 
-            File merged = new File(dir, entry.getKey() + ".mp4");
+            File merged = new File(dir, entry.getKey() + ".mkv");
             // Avoid clobbering an existing merged file
             if (!merged.exists()) {
                 System.out.println("FluxDM: merging " + videoFile.getName() + " + " + audioFile.getName());
                 try {
-                    // ffmpeg -i video -i audio -c copy -movflags +faststart output.mp4
+                    // ffmpeg -i video -i audio -c copy output.mkv
                     Process p = new ProcessBuilder(
                         ffmpegBin,
                         "-y",
                         "-i", videoFile.getAbsolutePath(),
                         "-i", audioFile.getAbsolutePath(),
                         "-c", "copy",
-                        "-movflags", "+faststart",
                         merged.getAbsolutePath()
                     ).redirectErrorStream(true).start();
                     // Drain output
